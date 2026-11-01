@@ -12,11 +12,15 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository & LFS Assets
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          lfs: true
           fetch-depth: 0
+
+      - name: Git LFS Pull
+        run: git lfs pull
 
       - name: Select Xcode Version
         uses: maxim-lobanov/setup-xcode@v1
