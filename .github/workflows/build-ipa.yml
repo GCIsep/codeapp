@@ -1,10 +1,7 @@
-name: Build Unsigned iOS App
+
+name: Build Unsigned iOS IPA
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -12,47 +9,64 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout repository & LFS Assets
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
           lfs: true
           fetch-depth: 0
 
-      - name: Git LFS Pull
-        run: git lfs pull
-
-      - name: Select Xcode Version
+      - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '15.4'
 
-      - name: Cache DerivedData & SPM
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-xcode-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode-
+      - name: Download iOS Frameworks
+        run: |
+          chmod +x downloadFrameworks.sh
+          ./downloadFrameworks.sh
 
-      - name: Resolve Swift Package Dependencies
+      - name: Resolve dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
             -project Code.xcodeproj \
             -scheme "Code App"
 
-      - name: Build Unsigned Application
+      - name: Build iOS Archive
         run: |
-          set -o pipefail
-          xcodebuild build \
+          xcodebuild archive \
             -project Code.xcodeproj \
             -scheme "Code App" \
             -destination 'generic/platform=iOS' \
             -configuration Release \
+            -archivePath "$RUNNER_TEMP/CodeApp.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGN_ENTITLEMENTS="" \
-            | xcbeautify
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+
+          APP_PATH=$(find \
+            "$RUNNER_TEMP/CodeApp.xcarchive/Products/Applications" \
+            -maxdepth 1 -name "*.app" -print -quit)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: App not found in archive!"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
+
+          cd "$RUNNER_TEMP/ipa"
+          zip -r "$GITHUB_WORKSPACE/CodeApp-Unsigned.ipa" Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeApp-Unsigned-IPA
+          path: CodeApp-Unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
