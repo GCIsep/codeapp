@@ -1,12 +1,12 @@
 name: Build Unsigned iOS IPA
 
 on:
-  workflow_dispatch: # Allows you to manually trigger the build from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build & Export App
-    runs-on: macos-14 # macOS 14 runner with Xcode pre-installed
+    runs-on: macos-14
 
     steps:
       - name: Checkout Code
@@ -15,7 +15,7 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
-      - name: Install Dependencies (if present)
+      - name: Install Dependencies
         run: |
           if [ -f "downloadFrameworks.sh" ]; then
             chmod +x downloadFrameworks.sh
@@ -25,11 +25,15 @@ jobs:
             pod install
           fi
 
-      - name: Build iOS Application (.app)
+      - name: Detect Scheme and Build iOS Application
         run: |
+          # Automatically detect the first scheme from Code.xcodeproj if not specified
+          SCHEME=$(xcodebuild -list -project Code.xcodeproj | awk '/Schemes:/{flag=1; next} /^[[:space:]]*$/{flag=0} flag' | head -n 1 | xargs)
+          echo "Detected scheme: $SCHEME"
+
           xcodebuild build \
-            -workspace *.xcworkspace 2>/dev/null || xcodebuild build -project *.xcodeproj \
-            -scheme "Code" \
+            -project Code.xcodeproj \
+            -scheme "$SCHEME" \
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
