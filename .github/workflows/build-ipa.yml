@@ -1,0 +1,51 @@
+name: Build Unsigned iOS IPA
+
+on:
+  workflow_dispatch: # Allows you to manually trigger the build from the Actions tab
+
+jobs:
+  build:
+    name: Build & Export App
+    runs-on: macos-14 # macOS 14 runner with Xcode pre-installed
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Install Dependencies (if present)
+        run: |
+          if [ -f "downloadFrameworks.sh" ]; then
+            chmod +x downloadFrameworks.sh
+            ./downloadFrameworks.sh
+          fi
+          if [ -f "Podfile" ]; then
+            pod install
+          fi
+
+      - name: Build iOS Application (.app)
+        run: |
+          xcodebuild build \
+            -workspace *.xcworkspace 2>/dev/null || xcodebuild build -project *.xcodeproj \
+            -scheme "Code" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CONFIGURATION_BUILD_DIR=build/Release-iphoneos
+
+      - name: Package into IPA Format
+        run: |
+          mkdir -p build/Payload
+          cp -R build/Release-iphoneos/*.app build/Payload/
+          cd build
+          zip -r CodeApp-Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeApp-Unsigned-IPA
+          path: build/CodeApp-Unsigned.ipa
